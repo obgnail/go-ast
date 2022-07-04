@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	d := ast_tool.NewDeclWalker(nil)
+	d := ast_tool.GetDeclWalker()
 	d.ParsePackage(`D:\golang\src\github.com\obgnail\net-link`)
 }
 

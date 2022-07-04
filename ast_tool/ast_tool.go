@@ -1,12 +1,8 @@
 package ast_tool
 
 import (
-	"fmt"
-	"github.com/pingcap/errors"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"io/fs"
 	"strings"
 )
 
@@ -33,49 +29,6 @@ type Package struct {
 
 	PackageTopDecl map[string]*Decl                // map[declName]*Decl
 	ImportTopDecl  map[ImportType]map[string]*Decl // map[ImportType]map[packagePath]*Decl
-}
-
-type DeclWalker struct {
-	pkgs              map[string]*Package // map[pckPath]*Package
-	parsePkgFilter    func(info fs.FileInfo) bool
-	parseImportFilter func(path string) bool
-}
-
-func NewDeclWalker(
-	parsePkgFilter func(info fs.FileInfo) (bool, ),
-	parseImportFilter func(path string) (bool, ),
-) *DeclWalker {
-	d := &DeclWalker{
-		pkgs:              make(map[string]*Package),
-		parsePkgFilter:    parsePkgFilter,
-		parseImportFilter: parseImportFilter,
-	}
-	return d
-}
-
-//func (w *DeclWalker) Visit(node ast.Node) ast.Visitor {
-//	return w
-//}
-
-func (w *DeclWalker) ParsePackage(pkgPath string) error {
-	pkgs, err := ParseDir(pkgPath, w.parsePkgFilter)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	for _, pkg := range pkgs {
-		files := FileMapToList(pkg.Files)
-		pkgDecls := CollectPackageTopDecl(pkgPath, files)
-		importDecls := CollectPackageImportTopDecl(pkgPath, pkg, w.parseImportFilter)
-
-		w.pkgs[pkgPath] = &Package{
-			path:           pkgPath,
-			pkg:            pkg,
-			PackageTopDecl: DeclListToMap(pkgDecls),
-			ImportTopDecl:  importDecls,
-		}
-	}
-
-	return nil
 }
 
 func CollectPackageTopDecl(pkgPath string, files []*ast.File) (decls []*Decl) {
@@ -118,8 +71,10 @@ func CollectPackageImportTopDecl(pkgPath string, pkg *ast.Package, filter func(p
 			}
 
 			importIdent := imp.Name
+
 			// normalImport
 			if importIdent == nil {
+				CollectPackageTopDecl(imp.Path.Value)
 
 				// dotImport
 			} else if importIdent.Name == "." {
@@ -128,38 +83,13 @@ func CollectPackageImportTopDecl(pkgPath string, pkg *ast.Package, filter func(p
 			} else if importIdent.Name == "_" {
 
 				// aliasImport
-				// 注意alias一样
+			} else if len(importIdent.Name) != 0 {
+
+				// error
 			} else {
 
 			}
 		}
 	}
 	return res
-}
-
-func ParseDir(dir string, filter func(fs.FileInfo) bool) (pkgs map[string]*ast.Package, err error) {
-	fset := token.NewFileSet()
-	pkgs, err = parser.ParseDir(fset, dir, filter, parser.ParseComments)
-	if err != nil {
-		return nil, errors.Trace(err)
-	}
-	if len(pkgs) != 1 {
-		return nil, fmt.Errorf("expected len(pkgs) == 1, got %d", len(pkgs))
-	}
-	return
-}
-
-func DeclListToMap(delcs []*Decl) map[string]*Decl {
-	res := make(map[string]*Decl)
-	for _, decl := range delcs {
-		res[decl.name] = decl
-	}
-	return res
-}
-
-func FileMapToList(m map[string]*ast.File) (files []*ast.File) {
-	for _, f := range m {
-		files = append(files, f)
-	}
-	return files
 }
