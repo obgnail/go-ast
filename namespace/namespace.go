@@ -40,6 +40,16 @@ func (hub *Secondary) Get(ns1 string, ns2 ...string) (interface{}, bool) {
 	return nil, false
 }
 
+func (hub *Secondary) AppendMap(ns1 string, m map[string]interface{}) {
+	for ns2, value := range m {
+		hub.Set(ns1, ns2, value)
+	}
+}
+
+func (hub *Secondary) All() map[string]map[string]interface{} {
+	return hub.getterMap
+}
+
 type Tertiary struct {
 	getterMap map[string]map[string]map[string]interface{}
 }
@@ -87,4 +97,16 @@ func (hub *Tertiary) Get(ns1 string, other ...string) (interface{}, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (hub *Tertiary) AppendSecondary(ns1 string, s *Secondary) {
+	for ns2, kv := range s.getterMap {
+		for ns3, value := range kv {
+			hub.Set(ns1, ns2, ns3, value)
+		}
+	}
+}
+
+func (hub *Tertiary) All() map[string]map[string]map[string]interface{} {
+	return hub.getterMap
 }

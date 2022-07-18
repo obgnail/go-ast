@@ -33,40 +33,69 @@ type Interface struct {
 	Funcs   []*Function `json:"functions"`
 }
 
+func NewInterface(typeSpec *ast.TypeSpec, file string) *Struct {
+	return nil
+}
+
 type Struct struct {
-	Name           string         `json:"name"`
-	File           string         `json:"file"`
-	Package        string         `json:"package"`
-	FieldList      []*Field       `json:"field_list"`
-	StructCategory StructCategory `json:"struct_category"`
+	ASTStruct *ast.TypeSpec
+	Name      string   `json:"name"`
+	File      string   `json:"file"`
+	Package   string   `json:"package"`
+	FieldList []*Field `json:"field_list"`
+	//StructCategory StructCategory `json:"struct_category"`
+}
+
+func NewStruct(typeSpec *ast.TypeSpec, file string, fieldList []*Field) *Struct {
+	_struct := &Struct{
+		ASTStruct: typeSpec,
+		Name:      typeSpec.Name.Name,
+		File:      file,
+		Package:   filepath.Dir(file),
+		FieldList: fieldList,
+	}
+	return _struct
 }
 
 type Alias struct {
-	Name    string      `json:"name"`
-	Package string      `json:"package"`
-	AliasOf interface{} `json:"alias_of"` // Function / string / Decl
+	ASTAlias *ast.TypeSpec
+	Name     string      `json:"name"`
+	Package  string      `json:"package"`
+	AliasOf  interface{} `json:"alias_of"` // Function / string / Decl
+}
+
+func NewAlias(typeSpec *ast.TypeSpec, fset *token.FileSet, file string) *Alias {
+	alias := &Alias{
+		ASTAlias: typeSpec,
+		Name:     typeSpec.Name.Name,
+		Package:  filepath.Dir(file),
+		AliasOf:  ExprTokenToStr(typeSpec.Type, fset),
+	}
+	return alias
 }
 
 type Field struct {
-	FieldName     string        `json:"field_name"`
-	FieldType     string        `json:"field_type"`
-	FieldTag      string        `json:"field_tag"`
-	FieldCategory FieldCategory `json:"field_category"`
+	ASTField  *ast.Field
+	FieldName string `json:"field_name"`
+	FieldType string `json:"field_type"`
+	FieldTag  string `json:"field_tag"`
+	//FieldCategory FieldCategory `json:"field_category"`
 }
 
 func NewField(fieldNode *ast.Field, fset *token.FileSet) *Field {
 	field := &Field{
-		FieldName:     GetFieldName(fieldNode),
-		FieldType:     ExprTokenToStr(fieldNode.Type, fset),
-		FieldTag:      GetFieldTag(fieldNode),
-		FieldCategory: 0,
+		ASTField:  fieldNode,
+		FieldName: GetFieldName(fieldNode),
+		FieldType: ExprTokenToStr(fieldNode.Type, fset),
+		FieldTag:  GetFieldTag(fieldNode),
+		//FieldCategory: 0,
 	}
 	return field
 }
 
 type TypeWalker struct {
 	File       string
-	fset       *token.FileSet
+	Fset       *token.FileSet
 	Structs    []*Struct
 	Interfaces []*Interface
 	Aliases    []*Alias
@@ -92,17 +121,12 @@ func (w *TypeWalker) Visit(node ast.Node) ast.Visitor {
 
 func (w *TypeWalker) CollectStruct(typeSpec *ast.TypeSpec) {
 	if structNode, ok := typeSpec.Type.(*ast.StructType); ok {
-		_struct := &Struct{
-			Name:    typeSpec.Name.Name,
-			File:    w.File,
-			Package: filepath.Dir(w.File),
-		}
-
+		var fieldList []*Field
 		for _, fieldNode := range structNode.Fields.List {
-			field := NewField(fieldNode, w.fset)
-			_struct.FieldList = append(_struct.FieldList, field)
+			field := NewField(fieldNode, w.Fset)
+			fieldList = append(fieldList, field)
 		}
-
+		_struct := NewStruct(typeSpec, w.File, fieldList)
 		w.Structs = append(w.Structs, _struct)
 	}
 }
@@ -110,7 +134,7 @@ func (w *TypeWalker) CollectStruct(typeSpec *ast.TypeSpec) {
 /*
 分类:
 	- FuncType    : type RunBatchTaskFunc func(tx *gorp.Transaction, task *batch.BatchTask) error
-	- nil         : type MyInt int
+	- nil         : type MyInt int 或者 type MyInt = int
 	- SelectorExpr: type tx gorp.Transaction
 	- Ident       : type tx Interface
 */
@@ -132,17 +156,24 @@ func (w *TypeWalker) CollectAlias(typeSpec *ast.TypeSpec) {
 	//	fmt.Println(funcNode)
 	//}
 
-	alias := &Alias{
-		Name:    typeSpec.Name.Name,
-		Package: filepath.Dir(w.File),
-		AliasOf: ExprTokenToStr(typeSpec.Type, w.fset),
-	}
+	alias := NewAlias(typeSpec, w.Fset, filepath.Dir(w.File))
 	w.Aliases = append(w.Aliases, alias)
 }
 
 func (w *TypeWalker) CollectInterface(typeSpec *ast.TypeSpec) {
 	if interfaceNode, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-		fmt.Println(interfaceNode)
+		name := typeSpec.Name.Name
+
+		for _, field := range interfaceNode.Methods.List {
+			if function, ok := field.Type.(*ast.FuncType); ok {
+				fmt.Println(function)
+			} else if selector, ok := field.Type.(*ast.SelectorExpr); ok {
+				fmt.Println(selector)
+			} else {
+				panic("error: not such type")
+			}
+		}
+		fmt.Println(interfaceNode, name)
 	}
 }
 
@@ -152,7 +183,7 @@ func ParseType(filePath string) (*TypeWalker, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	v := &TypeWalker{File: filePath, fset: fset}
+	v := &TypeWalker{File: filePath, Fset: fset}
 	ast.Walk(v, f)
 	return v, nil
 }

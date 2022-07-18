@@ -13,20 +13,47 @@ import (
 	"strings"
 )
 
-//var (
-//	Decls   *namespace.Secondary // map[pkgPath, declName]*Decl
-//	Imports *namespace.Secondary //  map[pkgPath, declName]*Decl
-//)
+type Decls struct {
+	*namespace.Secondary // map[pkgPath, declName]*Decl
+}
+
+func NewDecls() *Decls {
+	return &Decls{namespace.NewSecondary()}
+}
+
+func FixBaseDecl(decls *Decls, imports *Imports) {
+
+}
+
+func FindDeclFromSelectorExpr(expr *ast.SelectorExpr, filePath string, decls *namespace.Secondary) *Decl {
+	return nil
+}
+
+func (d *Decls) CollectPkg(pkgPath string, fileFilter func(info fs.FileInfo) bool) (err error) {
+	if d.Secondary == nil {
+		d.Secondary = namespace.NewSecondary()
+	}
+	if pkgPath == "" {
+		return
+	}
+	if _, ok := d.Get(pkgPath); ok {
+		return
+	}
+	m, err := CollectTopDeclFromPkgPath(pkgPath, fileFilter)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	for key, value := range m {
+		d.Set(pkgPath, key, value)
+	}
+	return
+}
 
 type Decl struct {
 	name     string
 	belong   string // belong package
 	decl     ast.Decl
-	baseDecl ast.Decl
-}
-
-func FindDeclFromSelectorExpr(expr *ast.SelectorExpr, filePath string, decls *namespace.Secondary) *Decl {
-	return nil
+	baseDecl ast.Decl // 专门针对type of、alias
 }
 
 func NewDecl(name, belong string, decl ast.Decl) *Decl {
@@ -42,7 +69,7 @@ func NewDecl(name, belong string, decl ast.Decl) *Decl {
 // 获取某个package下的所有顶级decls
 // return: map[declName]*Decl
 func CollectTopDeclFromPkgPath(pkgPath string, fileFilter func(info fs.FileInfo) bool) (decls map[string]*Decl, err error) {
-	pkgPath, pkg, err := NewPackage(pkgPath, fileFilter)
+	pkgPath, pkg, err := NewASTPackage(pkgPath, fileFilter)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
